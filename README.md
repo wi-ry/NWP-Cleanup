@@ -8,6 +8,6 @@ This game was created based on this comment from the NWP where they seem to be c
 
 Playable here: https://wi-ry.github.io/NWP-Cleanup/
 
-I got to level 7!
+I managed to win the whole game, so you can too :)
 
-<img width="688" height="765" alt="image" src="https://github.com/user-attachments/assets/c8104ce1-c48a-444e-8f6e-b50735d389a5" />
+<img width="689" height="936" alt="image" src="https://github.com/user-attachments/assets/749dbd62-5367-4e34-9e19-dbe49e824d10" />
