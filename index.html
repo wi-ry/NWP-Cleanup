@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
   <title>Downtown New West Clean-Up</title>
   <style>
     * { box-sizing: border-box; }
@@ -40,14 +40,14 @@
 
     #ui-bar {
       position: absolute;
-      top: 12px;
+      top: calc(10px + env(safe-area-inset-top));
       left: 50%;
       z-index: 3;
       display: grid;
-      grid-template-columns: repeat(4, minmax(86px, 1fr));
-      gap: 12px;
-      width: min(660px, calc(100vw - 24px));
-      padding: 10px 14px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: clamp(4px, 2vw, 12px);
+      width: min(660px, calc(100vw - 16px));
+      padding: 8px clamp(6px, 3vw, 14px);
       background: rgba(20, 29, 33, 0.88);
       border: 2px solid rgba(255, 245, 184, 0.72);
       border-radius: 8px;
@@ -58,17 +58,19 @@
     .hud-title {
       grid-column: 1 / -1;
       color: #fff4a3;
-      font-size: 20px;
+      font-size: clamp(14px, 4.2vw, 20px);
       font-weight: 900;
       letter-spacing: 0;
       text-align: center;
+      white-space: nowrap;
       text-shadow: 0 2px 0 #0c1715, 0 0 8px rgba(255, 221, 88, 0.36);
     }
 
     .hud-item {
       display: grid;
       gap: 3px;
-      min-height: 42px;
+      min-height: 38px;
+      min-width: 0;
       color: #f7fff4;
       font-size: 18px;
       font-weight: 900;
@@ -80,12 +82,18 @@
 
     .hud-label {
       color: #fff4a3;
-      font-size: 14px;
+      font-size: clamp(9px, 2.6vw, 14px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .hud-value {
       color: #fff;
-      font-size: 18px;
+      font-size: clamp(12px, 3.6vw, 18px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     #timer-count.warning {
@@ -101,7 +109,7 @@
     #message {
       position: absolute;
       left: 50%;
-      bottom: 22px;
+      bottom: calc(16px + env(safe-area-inset-bottom));
       z-index: 3;
       max-width: min(750px, calc(100vw - 28px));
       padding: 10px 14px;
@@ -110,7 +118,7 @@
       border: 1px solid rgba(169, 212, 151, 0.45);
       border-radius: 8px;
       transform: translateX(-50%);
-      font-size: 20px;
+      font-size: clamp(14px, 4vw, 20px);
       text-align: center;
       pointer-events: none;
     }
@@ -195,6 +203,39 @@
       color: #7a5a10;
       font-weight: 700;
     }
+
+    #bag-full-popup {
+      position: absolute;
+      left: 50%;
+      top: 38%;
+      z-index: 7;
+      max-width: min(320px, calc(100vw - 48px));
+      padding: 14px 22px;
+      color: #f7fff4;
+      background: rgba(148, 40, 32, 0.94);
+      border: 2px solid #ffdc9e;
+      border-radius: 10px;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+      font-size: clamp(15px, 4.2vw, 19px);
+      font-weight: 800;
+      line-height: 1.3;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(0.85);
+    }
+
+    #bag-full-popup.show {
+      animation: bagFullPop 1s ease-out;
+    }
+
+    @keyframes bagFullPop {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+      12% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+      22% { transform: translate(-50%, -50%) scale(1); }
+      78% { opacity: 1; }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+    }
   </style>
 </head>
 <body>
@@ -228,6 +269,8 @@
         <p class="intro-prompt">Press any key or tap/click here to get started!</p>
       </div>
     </div>
+
+    <div id="bag-full-popup">Your bag is full! Dump it in a trash can first.</div>
   </div>
 
   <script>
@@ -271,6 +314,7 @@
     const roundSummary = document.getElementById('round-summary');
     const restartBtn = document.getElementById('restart-btn');
     const introPanel = document.getElementById('intro-panel');
+    const bagFullPopup = document.getElementById('bag-full-popup');
     let introDismissed = false;
     let modeReady = false;
 
@@ -372,6 +416,14 @@
 
     function setMessage(text) {
       messageEl.textContent = text;
+    }
+
+    function flashBagFullPopup() {
+      bagFullPopup.classList.remove('show');
+      // Force a reflow so re-adding the class restarts the CSS animation,
+      // even if the popup is already mid-animation from a previous click.
+      void bagFullPopup.offsetWidth;
+      bagFullPopup.classList.add('show');
     }
 
     function updateHUD() {
@@ -687,6 +739,7 @@
 
       if (carriedItems >= maxCarry) {
         setMessage('Your bag is full. Click a trash can to dump it.');
+        flashBagFullPopup();
         return;
       }
 
@@ -849,20 +902,60 @@
       return null;
     }
 
-    function screenPosition(item) {
-      if (!item) return null;
-      if (fallbackMode) return project(item.position);
+    function projectLatLngToScreen(latLng) {
       if (!map || !map.getProjection()) return null;
 
       const mapDiv = map.getDiv();
       const scale = Math.pow(2, map.getZoom());
       const projection = map.getProjection();
-      const worldPoint = projection.fromLatLngToPoint(new google.maps.LatLng(item.position));
+      const worldPoint = projection.fromLatLngToPoint(latLng);
       const centerPoint = projection.fromLatLngToPoint(map.getCenter());
       return {
         x: (worldPoint.x - centerPoint.x) * scale + mapDiv.clientWidth / 2,
         y: (worldPoint.y - centerPoint.y) * scale + mapDiv.clientHeight / 2
       };
+    }
+
+    function screenPosition(item) {
+      if (!item) return null;
+      if (fallbackMode) return project(item.position);
+      return projectLatLngToScreen(new google.maps.LatLng(item.position));
+    }
+
+    // Finds the closest clickable item to a screen point within `radius` px, preferring
+    // trash/gold over bins (matching their higher on-screen stacking). This is used as a
+    // forgiving fallback for real map clicks that land just outside a marker's own hit
+    // area -- e.g. a small amount of finger movement during a tap, or two icons close
+    // together -- since native marker clicks can otherwise miss by just a few pixels.
+    function findNearbyItem(point, radius) {
+      const priorityGroups = [['gold', 'trash'], ['bin']];
+      for (const types of priorityGroups) {
+        let best = null;
+        let bestDistance = radius;
+        for (const item of items) {
+          if (item.collected || !types.includes(item.type)) continue;
+          if (item.type !== 'bin' && !item.active) continue;
+          const itemPoint = screenPosition(item);
+          if (!itemPoint) continue;
+          const distance = Math.hypot(itemPoint.x - point.x, itemPoint.y - point.y);
+          if (distance <= bestDistance) {
+            bestDistance = distance;
+            best = item;
+          }
+        }
+        if (best) return best;
+      }
+      return null;
+    }
+
+    function handleMapClick(event) {
+      // Marker clicks are consumed by the marker itself and never reach this listener,
+      // so by the time we get here the tap genuinely missed every marker's own hit area.
+      if (fallbackMode || !event.latLng) return;
+      const point = projectLatLngToScreen(event.latLng);
+      if (!point) return;
+      const item = findNearbyItem(point, 30);
+      if (item) handleItemClick(item);
     }
 
     function handleFallbackClick(event) {
@@ -893,7 +986,8 @@
           strokeColor: '#fff7d6',
           strokeOpacity: 0.92,
           strokeWeight: 18,
-          zIndex: 10
+          zIndex: 10,
+          clickable: false
         }));
 
         overlays.push(new google.maps.Polyline({
@@ -903,7 +997,8 @@
           strokeColor: street.color,
           strokeOpacity: 0.96,
           strokeWeight: 8,
-          zIndex: 11
+          zIndex: 11,
+          clickable: false
         }));
 
         const labelPoint = streetGamePoint(street, 0.08);
@@ -912,7 +1007,8 @@
           map,
           label: { text: street.label, color: '#12251f', fontSize: '14px', fontWeight: '700' },
           icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-          zIndex: 12
+          zIndex: 12,
+          clickable: false
         }));
       });
     }
@@ -990,6 +1086,7 @@
         mapTypeId: 'roadmap',
         disableDefaultUI: true,
         gestureHandling: 'greedy',
+        clickableIcons: false,
         restriction: {
           latLngBounds: downtownBounds,
           strictBounds: false
@@ -1018,6 +1115,7 @@
       modeReady = true;
       tryStartGame();
       map.addListener('zoom_changed', updateMarkerIconSizes);
+      map.addListener('click', handleMapClick);
       window.__debugMarkerSizes = debugMarkerSizes;
       window.__debugSetZoom = (zoom) => map.setZoom(zoom);
 
