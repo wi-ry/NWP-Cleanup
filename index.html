@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Downtown New West Clean-Up</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      color: #f7fff4;
+      font-family: Verdana, Geneva, sans-serif;
+    }
+
+    #game-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    #fallback-map {
+      display: none;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      background: #d7dfd6;
+    }
+
+    .fallback-active #map { display: none; }
+    .fallback-active #fallback-map { display: block; }
+
+    #ui-bar {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      z-index: 3;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(86px, 1fr));
+      gap: 12px;
+      width: min(660px, calc(100vw - 24px));
+      padding: 10px 14px;
+      background: rgba(20, 29, 33, 0.88);
+      border: 2px solid rgba(255, 245, 184, 0.72);
+      border-radius: 8px;
+      box-shadow: 0 10px 0 rgba(0, 0, 0, 0.24), 0 16px 30px rgba(0, 0, 0, 0.25);
+      transform: translateX(-50%);
+    }
+
+    .hud-title {
+      grid-column: 1 / -1;
+      color: #fff4a3;
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: 0;
+      text-align: center;
+      text-shadow: 0 2px 0 #0c1715, 0 0 8px rgba(255, 221, 88, 0.36);
+    }
+
+    .hud-item {
+      display: grid;
+      gap: 3px;
+      min-height: 42px;
+      color: #f7fff4;
+      font-size: 18px;
+      font-weight: 900;
+      line-height: 1.15;
+      text-align: center;
+      text-transform: uppercase;
+      text-shadow: 0 2px 0 #0c1715;
+    }
+
+    .hud-label {
+      color: #fff4a3;
+      font-size: 14px;
+    }
+
+    .hud-value {
+      color: #fff;
+      font-size: 18px;
+    }
+
+    #timer-count.warning {
+      color: #ffdc5e;
+      animation: timerPulse 0.55s steps(2, end) infinite;
+    }
+
+    @keyframes timerPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.12); }
+    }
+
+    #message {
+      position: absolute;
+      left: 50%;
+      bottom: 22px;
+      z-index: 3;
+      max-width: min(750px, calc(100vw - 28px));
+      padding: 10px 14px;
+      color: #f7fff4;
+      background: rgba(23, 35, 31, 0.88);
+      border: 1px solid rgba(169, 212, 151, 0.45);
+      border-radius: 8px;
+      transform: translateX(-50%);
+      font-size: 20px;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    #win-panel {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: none;
+      place-items: center;
+      padding: 20px;
+      background: rgba(18, 27, 24, 0.56);
+    }
+
+    #win-panel.visible { display: grid; }
+
+    .win-box {
+      width: min(430px, 100%);
+      padding: 22px;
+      color: #13201b;
+      background: #f8f3dd;
+      border: 3px solid #d7a63f;
+      border-radius: 8px;
+      text-align: center;
+      box-shadow: 0 20px 46px rgba(0, 0, 0, 0.28);
+    }
+
+    .win-box h1 {
+      margin: 0 0 10px;
+      font-size: 26px;
+    }
+
+    .win-box button {
+      margin-top: 14px;
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 5px;
+      color: #f7fff4;
+      background: #263a34;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="map"></div>
+    <canvas id="fallback-map"></canvas>
+
+    <div id="ui-bar">
+      <div class="hud-title">New West Clean-Up</div>
+      <div class="hud-item"><span class="hud-label">World</span><span class="hud-value" id="level-count">1-1</span></div>
+      <div class="hud-item"><span class="hud-label">Time</span><span class="hud-value" id="timer-count">120</span></div>
+      <div class="hud-item"><span class="hud-label">Bag</span><span class="hud-value" id="inv-count">0 / 0</span></div>
+      <div class="hud-item"><span class="hud-label">Score</span><span class="hud-value" id="total-score">000000</span></div>
+    </div>
+
+    <div id="message">Click garbage to pick it up. Click a trash can to dump what you are carrying.</div>
+
+    <div id="win-panel">
+      <div class="win-box">
+        <h1 id="round-title">Downtown cleaned.</h1>
+        <p id="round-summary">You scored 100 points and won.</p>
+        <button id="restart-btn">Play again</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const winScore = 100;
+    const maxLevel = 10;
+    const baseRoundSeconds = 120;
+    const maxCarry = 8;
+    let map;
+    let level = 1;
+    let timeRemaining = baseRoundSeconds;
+    let score = 0;
+    let carriedItems = 0;
+    let carriedPoints = 0;
+    let markers = [];
+    let overlays = [];
+    let items = [];
+    let trashTimers = [];
+    let wiggleAnimations = [];
+    let roundTimer = null;
+    let levelAdvanceTimer = null;
+    let fallbackMode = false;
+    const trashTiming = {
+      initialMin: 1800,
+      initialMax: 7000,
+      visibleMin: 14000,
+      visibleMax: 26000,
+      hiddenMin: 4500,
+      hiddenMax: 9500
+    };
+
+    const gameContainer = document.getElementById('game-container');
+    const fallbackCanvas = document.getElementById('fallback-map');
+    const fallbackCtx = fallbackCanvas.getContext('2d');
+    const levelEl = document.getElementById('level-count');
+    const timerEl = document.getElementById('timer-count');
+    const scoreEl = document.getElementById('total-score');
+    const inventoryEl = document.getElementById('inv-count');
+    const messageEl = document.getElementById('message');
+    const winPanel = document.getElementById('win-panel');
+    const roundTitle = document.getElementById('round-title');
+    const roundSummary = document.getElementById('round-summary');
+    const restartBtn = document.getElementById('restart-btn');
+
+    const downtownBounds = {
+      north: 49.2072,
+      south: 49.1971,
+      west: -122.9168,
+      east: -122.9026
+    };
+
+    const streets = {
+      carnarvon: {
+        label: 'Carnarvon St',
+        color: '#ff9f43',
+        centerOffsetMeters: -13,
+        path: [
+          { lat: 49.20048, lng: -122.91503 },
+          { lat: 49.20147, lng: -122.91318 },
+          { lat: 49.20304, lng: -122.91085 },
+          { lat: 49.20397, lng: -122.90902 },
+          { lat: 49.20416, lng: -122.90868 },
+          { lat: 49.20438, lng: -122.90818 },
+          { lat: 49.20458, lng: -122.90772 },
+          { lat: 49.20478, lng: -122.90730 },
+          { lat: 49.20502, lng: -122.90688 },
+          { lat: 49.20534, lng: -122.90646 },
+          { lat: 49.20546, lng: -122.90640 }
+        ]
+      },
+      front: {
+        label: 'Front St',
+        color: '#54a0ff',
+        centerOffsetMeters: 18,
+        path: [
+          { lat: 49.20059, lng: -122.91192 },
+          { lat: 49.20072, lng: -122.91162 },
+          { lat: 49.20082, lng: -122.91131 },
+          { lat: 49.20083, lng: -122.91125 },
+          { lat: 49.20085, lng: -122.91119 },
+          { lat: 49.20086, lng: -122.91114 },
+          { lat: 49.20097, lng: -122.91078 },
+          { lat: 49.20134, lng: -122.91000 },
+          { lat: 49.20160, lng: -122.90925 },
+          { lat: 49.20215, lng: -122.90805 },
+          { lat: 49.20295, lng: -122.90655 },
+          { lat: 49.20415, lng: -122.90499 }
+        ]
+      },
+      columbia: {
+        label: 'Columbia St',
+        color: '#10ac84',
+        centerOffsetMeters: 0,
+        path: [
+          { lat: 49.20026, lng: -122.91545 },
+          { lat: 49.20027, lng: -122.91497 },
+          { lat: 49.20029, lng: -122.91471 },
+          { lat: 49.20041, lng: -122.91391 },
+          { lat: 49.20042, lng: -122.91362 },
+          { lat: 49.20050, lng: -122.91325 },
+          { lat: 49.20055, lng: -122.91307 },
+          { lat: 49.20065, lng: -122.91277 },
+          { lat: 49.20072, lng: -122.91267 },
+          { lat: 49.20078, lng: -122.91261 },
+          { lat: 49.20088, lng: -122.91245 },
+          { lat: 49.20127, lng: -122.91174 },
+          { lat: 49.20144, lng: -122.91135 },
+          { lat: 49.20164, lng: -122.91100 },
+          { lat: 49.20176, lng: -122.91081 },
+          { lat: 49.20186, lng: -122.91056 },
+          { lat: 49.20209, lng: -122.91020 },
+          { lat: 49.20215, lng: -122.91008 },
+          { lat: 49.20229, lng: -122.90992 },
+          { lat: 49.20261, lng: -122.90928 },
+          { lat: 49.20266, lng: -122.90919 },
+          { lat: 49.20275, lng: -122.90902 },
+          { lat: 49.20277, lng: -122.90892 },
+          { lat: 49.20288, lng: -122.90876 },
+          { lat: 49.20311, lng: -122.90832 },
+          { lat: 49.20326, lng: -122.90803 },
+          { lat: 49.20348, lng: -122.90774 },
+          { lat: 49.20373, lng: -122.90730 },
+          { lat: 49.20399, lng: -122.90678 },
+          { lat: 49.20404, lng: -122.90664 },
+          { lat: 49.20417, lng: -122.90642 },
+          { lat: 49.20438, lng: -122.90606 },
+          { lat: 49.20450, lng: -122.90584 },
+          { lat: 49.20457, lng: -122.90567 },
+          { lat: 49.20461, lng: -122.90552 },
+          { lat: 49.20462, lng: -122.90540 }
+        ]
+      }
+    };
+
+    const iconStyles = {
+      bin: { symbol: '🗑', color: '#2e8b57', baseSize: 18, fontSize: 15 },
+      trash: { symbol: '●', color: '#d94d3f', baseSize: 20, fontSize: 18 },
+      gold: { symbol: '★', color: '#d7a516', baseSize: 22, fontSize: 18 }
+    };
+
+    function setMessage(text) {
+      messageEl.textContent = text;
+    }
+
+    function updateHUD() {
+      levelEl.textContent = `${level}-1`;
+      timerEl.textContent = formatTime(timeRemaining);
+      timerEl.classList.toggle('warning', timeRemaining <= 20 && timeRemaining > 0);
+      inventoryEl.textContent = `${carriedItems}/${maxCarry}`;
+      scoreEl.textContent = String(Math.min(score, winScore)).padStart(6, '0');
+    }
+
+    function formatTime(seconds) {
+      return String(Math.max(0, Math.ceil(seconds))).padStart(3, '0');
+    }
+
+    function levelMultiplier() {
+      return Math.pow(0.9, level - 1);
+    }
+
+    function roundDuration() {
+      return Math.ceil(baseRoundSeconds * levelMultiplier());
+    }
+
+    function scaledTrashTime(value) {
+      return Math.max(900, value * levelMultiplier());
+    }
+
+    function distance(a, b) {
+      return Math.hypot(a.lat - b.lat, a.lng - b.lng);
+    }
+
+    function pointAlongPath(path, ratio) {
+      let total = 0;
+      for (let i = 1; i < path.length; i++) total += distance(path[i - 1], path[i]);
+
+      let travelled = 0;
+      const target = total * ratio;
+      for (let i = 1; i < path.length; i++) {
+        const start = path[i - 1];
+        const end = path[i];
+        const segmentLength = distance(start, end);
+        if (travelled + segmentLength >= target) {
+          const segmentRatio = (target - travelled) / segmentLength;
+          return {
+            lat: start.lat + (end.lat - start.lat) * segmentRatio,
+            lng: start.lng + (end.lng - start.lng) * segmentRatio,
+            tangent: {
+              lat: (end.lat - start.lat) / segmentLength,
+              lng: (end.lng - start.lng) / segmentLength
+            }
+          };
+        }
+        travelled += segmentLength;
+      }
+
+      const last = path[path.length - 1];
+      return { lat: last.lat, lng: last.lng, tangent: { lat: 0, lng: 1 } };
+    }
+
+    function sidewalkPoint(street, ratio, side, offsetMeters) {
+      const base = pointAlongPath(street.path, ratio);
+      return offsetFromPathPoint(base, side * offsetMeters);
+    }
+
+    function streetGamePoint(street, ratio, sideOffsetMeters = 0) {
+      const base = pointAlongPath(street.path, ratio);
+      return offsetFromPathPoint(base, street.centerOffsetMeters + sideOffsetMeters);
+    }
+
+    function offsetFromPathPoint(base, offsetMeters) {
+      const metersToLat = offsetMeters / 111320;
+      const metersToLng = offsetMeters / (111320 * Math.cos(base.lat * Math.PI / 180));
+      const normal = { lat: -base.tangent.lng, lng: base.tangent.lat };
+      return {
+        lat: base.lat + normal.lat * metersToLat,
+        lng: base.lng + normal.lng * metersToLng
+      };
+    }
+
+    function streetDisplayPath(street) {
+      return Array.from({ length: 36 }, (_, index) => streetGamePoint(street, index / 35));
+    }
+
+    function markerSizeFor(item, hovered = false) {
+      const zoom = map ? map.getZoom() : 16;
+      const base = iconStyles[item.type].baseSize;
+      const zoomBoost = Math.max(0, zoom - 15) * 3;
+      return base + zoomBoost + (hovered ? 8 : 0);
+    }
+
+    function createEmojiIcon(symbol, color, size = 24, fontSize = 17) {
+      const svg = encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 42 42">
+          <circle cx="21" cy="21" r="18" fill="${color}" stroke="white" stroke-width="3"/>
+          <text x="21" y="27" text-anchor="middle" font-size="${fontSize}" font-family="Arial, sans-serif">${symbol}</text>
+        </svg>`);
+      return {
+        url: `data:image/svg+xml;charset=UTF-8,${svg}`,
+        scaledSize: new google.maps.Size(size, size),
+        anchor: new google.maps.Point(size / 2, size / 2)
+      };
+    }
+
+    function iconForItem(item, hovered = false) {
+      const style = iconStyles[item.type];
+      return createEmojiIcon(style.symbol, style.color, markerSizeFor(item, hovered), style.fontSize);
+    }
+
+    function clearMarkers() {
+      markers.forEach((marker) => marker.setMap(null));
+      markers = [];
+    }
+
+    function clearWiggleAnimations() {
+      wiggleAnimations.forEach((animation) => cancelAnimationFrame(animation));
+      wiggleAnimations = [];
+    }
+
+    function clearTrashTimers() {
+      trashTimers.forEach((timer) => clearTimeout(timer));
+      trashTimers = [];
+    }
+
+    function clearRoundTimer() {
+      if (roundTimer) clearInterval(roundTimer);
+      roundTimer = null;
+    }
+
+    function clearLevelAdvanceTimer() {
+      if (levelAdvanceTimer) clearTimeout(levelAdvanceTimer);
+      levelAdvanceTimer = null;
+    }
+
+    function clearOverlays() {
+      overlays.forEach((overlay) => overlay.setMap(null));
+      overlays = [];
+    }
+
+    function createMarker(item) {
+      if (fallbackMode) return;
+
+      const marker = new google.maps.Marker({
+        position: item.position,
+        map: item.active ? map : null,
+        icon: iconForItem(item),
+        opacity: item.type === 'bin' || item.active ? 1 : 0,
+        title: item.type === 'bin' ? 'Trash can' : item.type === 'gold' ? 'Gold trash: 10 points' : 'Garbage: 1 point',
+        zIndex: item.type === 'bin' ? 100 : item.type === 'gold' ? 90 : 30
+      });
+
+      marker.addListener('click', () => handleItemClick(item));
+      marker.addListener('mouseover', () => marker.setIcon(iconForItem(item, true)));
+      marker.addListener('mouseout', () => marker.setIcon(iconForItem(item)));
+      item.marker = marker;
+      markers.push(marker);
+    }
+
+    function wigglePosition(position, elapsed) {
+      const wobbleMeters = Math.sin(elapsed / 125) * 0.65;
+      const metersToLng = wobbleMeters / (111320 * Math.cos(position.lat * Math.PI / 180));
+      return { lat: position.lat, lng: position.lng + metersToLng };
+    }
+
+    function animateTrashIn(item) {
+      if (fallbackMode || item.type === 'bin' || item.collected || !item.marker) return;
+
+      const duration = 520;
+      const started = performance.now();
+      item.marker.setOpacity(0);
+
+      function frame(now) {
+        if (item.collected || !item.active || !item.marker) return;
+
+        const elapsed = now - started;
+        const progress = Math.min(elapsed / duration, 1);
+        item.marker.setOpacity(progress);
+        item.marker.setPosition(wigglePosition(item.position, elapsed));
+
+        if (progress < 1) {
+          wiggleAnimations.push(requestAnimationFrame(frame));
+        } else {
+          item.marker.setOpacity(1);
+          item.marker.setPosition(item.position);
+        }
+      }
+
+      wiggleAnimations.push(requestAnimationFrame(frame));
+    }
+
+    function randomBetween(min, max) {
+      return min + Math.random() * (max - min);
+    }
+
+    function setItemActive(item, active) {
+      if (item.type === 'bin' || item.collected) return;
+
+      item.active = active;
+      if (item.marker) {
+        item.marker.setMap(active ? map : null);
+        if (active) animateTrashIn(item);
+      }
+      drawFallbackMap();
+    }
+
+    function scheduleTrashToggle(item, delay = randomBetween(scaledTrashTime(trashTiming.initialMin), scaledTrashTime(trashTiming.initialMax))) {
+      if (item.type === 'bin' || item.collected || score >= winScore) return;
+
+      const timer = setTimeout(() => {
+        if (!item.collected && score < winScore) {
+          setItemActive(item, !item.active);
+          scheduleTrashToggle(item, item.active ? randomBetween(scaledTrashTime(trashTiming.visibleMin), scaledTrashTime(trashTiming.visibleMax)) : randomBetween(scaledTrashTime(trashTiming.hiddenMin), scaledTrashTime(trashTiming.hiddenMax)));
+        }
+      }, delay);
+      trashTimers.push(timer);
+    }
+
+    function updateMarkerIconSizes() {
+      if (fallbackMode) {
+        drawFallbackMap();
+        return;
+      }
+
+      items.forEach((item) => {
+        if (!item.collected && item.marker) item.marker.setIcon(iconForItem(item));
+      });
+    }
+
+    function makeItems() {
+      items = [];
+      clearTrashTimers();
+      clearWiggleAnimations();
+      clearMarkers();
+
+      const binCounts = { carnarvon: 33, front: 33, columbia: 34 };
+
+      Object.entries(streets).forEach(([streetKey, street]) => {
+        for (let index = 0; index < binCounts[streetKey]; index++) {
+          const ratio = (index + 0.5) / binCounts[streetKey];
+          const sideLane = index % 4 < 2 ? 1 : -1;
+          const sideDistance = index % 2 === 0 ? 13 : 18;
+          items.push({
+            id: `${streetKey}-bin-${index}`,
+            street: streetKey,
+            type: 'bin',
+            value: 0,
+            active: true,
+            position: streetGamePoint(street, ratio, sideLane * sideDistance)
+          });
+        }
+      });
+
+      const trashCounts = { carnarvon: 26, front: 26, columbia: 27 };
+      const trashSlots = [0.13, 0.27, 0.42, 0.58, 0.73, 0.87];
+      let trashIndex = 0;
+
+      Object.entries(streets).forEach(([streetKey, street]) => {
+        for (let index = 0; index < trashCounts[streetKey]; index++) {
+          const slot = trashSlots[index % trashSlots.length];
+          const cycle = Math.floor(index / trashSlots.length);
+          const ratio = Math.max(0.08, Math.min(0.92, slot + (cycle - 2) * 0.011));
+          const isGold = trashIndex % 15 === 0;
+          const sideLane = index % 4 < 2 ? -1 : 1;
+          const sideDistance = isGold ? 30 : index % 2 === 0 ? 23 : 28;
+          items.push({
+            id: `${streetKey}-trash-${index}`,
+            street: streetKey,
+            type: isGold ? 'gold' : 'trash',
+            value: isGold ? 10 : 1,
+            active: index % 4 !== 0,
+            position: streetGamePoint(street, ratio, sideLane * sideDistance)
+          });
+          trashIndex += 1;
+        }
+      });
+
+      items.forEach(createMarker);
+      items.forEach(scheduleTrashToggle);
+      window.__debugGame = debugState;
+      drawFallbackMap();
+    }
+
+    function handleItemClick(item) {
+      if (score >= winScore || timeRemaining <= 0 || winPanel.classList.contains('visible')) return;
+
+      if (item.type === 'bin') {
+        if (carriedItems === 0) {
+          setMessage('Pick up garbage first, then click a trash can to dump it.');
+          return;
+        }
+
+        score += carriedPoints;
+        setMessage(`Disposed ${carriedItems} item(s) for ${carriedPoints} point(s).`);
+        carriedItems = 0;
+        carriedPoints = 0;
+        if (score >= winScore) {
+          score = winScore;
+          completeLevel();
+        }
+        updateHUD();
+        return;
+      }
+
+      if (!item.active) return;
+
+      if (carriedItems >= maxCarry) {
+        setMessage('Your bag is full. Click a trash can to dump it.');
+        return;
+      }
+
+      if (item.marker) item.marker.setMap(null);
+      item.collected = true;
+      item.active = false;
+      carriedItems += 1;
+      carriedPoints += item.value;
+      setMessage(item.type === 'gold' ? 'Gold trash collected. Dump it for 10 points.' : 'Garbage collected. Dump it in a trash can for 1 point.');
+      updateHUD();
+      drawFallbackMap();
+    }
+
+    function startRoundTimer() {
+      clearRoundTimer();
+      roundTimer = setInterval(() => {
+        timeRemaining -= 1;
+        updateHUD();
+
+        if (timeRemaining <= 0) {
+          failRound();
+        }
+      }, 1000);
+    }
+
+    function completeLevel() {
+      clearRoundTimer();
+      clearTrashTimers();
+      clearLevelAdvanceTimer();
+
+      if (level >= maxLevel) {
+        roundTitle.textContent = 'Downtown cleaned.';
+        roundSummary.textContent = 'You cleared all 10 levels.';
+        restartBtn.textContent = 'Play again';
+        winPanel.classList.add('visible');
+        updateHUD();
+        return;
+      }
+
+      setMessage(`Level ${level} cleared. Level ${level + 1} starts now.`);
+      levelAdvanceTimer = setTimeout(() => startLevel(level + 1), 1400);
+    }
+
+    function failRound() {
+      clearRoundTimer();
+      clearTrashTimers();
+      timeRemaining = 0;
+      roundTitle.textContent = `Level ${level} timed out.`;
+      roundSummary.textContent = `You reached ${score} / ${winScore} points before time ran out.`;
+      restartBtn.textContent = 'Start over';
+      winPanel.classList.add('visible');
+      updateHUD();
+    }
+
+    function project(position) {
+      const x = (position.lng - downtownBounds.west) / (downtownBounds.east - downtownBounds.west) * fallbackCanvas.clientWidth;
+      const y = (downtownBounds.north - position.lat) / (downtownBounds.north - downtownBounds.south) * fallbackCanvas.clientHeight;
+      return { x, y };
+    }
+
+    function resizeFallbackMap() {
+      const ratio = window.devicePixelRatio || 1;
+      fallbackCanvas.width = Math.round(fallbackCanvas.clientWidth * ratio);
+      fallbackCanvas.height = Math.round(fallbackCanvas.clientHeight * ratio);
+      fallbackCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      drawFallbackMap();
+    }
+
+    function drawFallbackStreet(street, outerWidth, innerWidth) {
+      fallbackCtx.lineCap = 'round';
+      fallbackCtx.lineJoin = 'round';
+      fallbackCtx.strokeStyle = '#fff8df';
+      fallbackCtx.lineWidth = outerWidth;
+      fallbackCtx.beginPath();
+      streetDisplayPath(street).forEach((point, index) => {
+        const screen = project(point);
+        if (index === 0) fallbackCtx.moveTo(screen.x, screen.y);
+        else fallbackCtx.lineTo(screen.x, screen.y);
+      });
+      fallbackCtx.stroke();
+
+      fallbackCtx.strokeStyle = street.color;
+      fallbackCtx.lineWidth = innerWidth;
+      fallbackCtx.beginPath();
+      streetDisplayPath(street).forEach((point, index) => {
+        const screen = project(point);
+        if (index === 0) fallbackCtx.moveTo(screen.x, screen.y);
+        else fallbackCtx.lineTo(screen.x, screen.y);
+      });
+      fallbackCtx.stroke();
+    }
+
+    function drawFallbackMap() {
+      if (!fallbackMode) return;
+
+      const w = fallbackCanvas.clientWidth;
+      const h = fallbackCanvas.clientHeight;
+      fallbackCtx.clearRect(0, 0, w, h);
+      fallbackCtx.fillStyle = '#d7dfd6';
+      fallbackCtx.fillRect(0, 0, w, h);
+
+      fallbackCtx.fillStyle = '#edf0df';
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 7; col++) {
+          fallbackCtx.fillRect(w * (0.06 + col * 0.13), h * (0.08 + row * 0.17), w * 0.075, h * 0.075);
+        }
+      }
+
+      fallbackCtx.fillStyle = '#a9c8cf';
+      fallbackCtx.beginPath();
+      fallbackCtx.moveTo(0, h * 0.78);
+      fallbackCtx.lineTo(w, h * 0.70);
+      fallbackCtx.lineTo(w, h);
+      fallbackCtx.lineTo(0, h);
+      fallbackCtx.closePath();
+      fallbackCtx.fill();
+
+      fallbackCtx.fillStyle = 'rgba(20, 30, 27, 0.50)';
+      fallbackCtx.fillRect(0, 0, w, h);
+
+      Object.values(streets).forEach((street) => {
+        drawFallbackStreet(street, 34, 15);
+        const labelPoint = project(streetGamePoint(street, 0.08));
+        fallbackCtx.fillStyle = '#fff8df';
+        fallbackCtx.font = `700 ${Math.max(13, w * 0.014)}px Verdana, Geneva, sans-serif`;
+        fallbackCtx.fillText(street.label, labelPoint.x + 8, labelPoint.y - 14);
+      });
+
+      items.forEach((item) => {
+        if (item.collected) return;
+        if (item.type !== 'bin' && !item.active) return;
+        const point = project(item.position);
+        const size = item.type === 'bin' ? 13 : item.type === 'gold' ? 16 : 14;
+        fallbackCtx.beginPath();
+        fallbackCtx.arc(point.x, point.y, size, 0, Math.PI * 2);
+        fallbackCtx.fillStyle = item.type === 'bin' ? '#2e8b57' : item.type === 'gold' ? '#d7a516' : '#d94d3f';
+        fallbackCtx.fill();
+        fallbackCtx.strokeStyle = '#fff';
+        fallbackCtx.lineWidth = 3;
+        fallbackCtx.stroke();
+        fallbackCtx.fillStyle = '#fff';
+        fallbackCtx.font = 'bold 16px Verdana, Geneva, sans-serif';
+        fallbackCtx.textAlign = 'center';
+        fallbackCtx.textBaseline = 'middle';
+        fallbackCtx.fillText(item.type === 'bin' ? 'T' : item.type === 'gold' ? '★' : '•', point.x, point.y + 1);
+      });
+    }
+
+    function fallbackItemAt(clientX, clientY) {
+      const rect = fallbackCanvas.getBoundingClientRect();
+      const click = { x: clientX - rect.left, y: clientY - rect.top };
+      for (let index = items.length - 1; index >= 0; index--) {
+        const item = items[index];
+        if (item.collected) continue;
+        if (item.type !== 'bin' && !item.active) continue;
+        const point = project(item.position);
+        const radius = item.type === 'bin' ? 23 : 21;
+        if (Math.hypot(point.x - click.x, point.y - click.y) <= radius) return item;
+      }
+      return null;
+    }
+
+    function screenPosition(item) {
+      if (!item) return null;
+      if (fallbackMode) return project(item.position);
+      if (!map || !map.getProjection()) return null;
+
+      const mapDiv = map.getDiv();
+      const scale = Math.pow(2, map.getZoom());
+      const projection = map.getProjection();
+      const worldPoint = projection.fromLatLngToPoint(new google.maps.LatLng(item.position));
+      const centerPoint = projection.fromLatLngToPoint(map.getCenter());
+      return {
+        x: (worldPoint.x - centerPoint.x) * scale + mapDiv.clientWidth / 2,
+        y: (worldPoint.y - centerPoint.y) * scale + mapDiv.clientHeight / 2
+      };
+    }
+
+    function handleFallbackClick(event) {
+      const item = fallbackItemAt(event.clientX, event.clientY);
+      if (item) handleItemClick(item);
+      else setMessage('Click garbage to pick it up. Click a trash can to dump it.');
+    }
+
+    function useFallbackMap(reason) {
+      if (fallbackMode) return;
+      fallbackMode = true;
+      gameContainer.classList.add('fallback-active');
+      clearMarkers();
+      setMessage(reason || 'Google Maps is unavailable, so the local top-down map is active.');
+      resizeFallbackMap();
+      if (items.length === 0) resetGame();
+      else drawFallbackMap();
+    }
+
+    function drawStreetOverlays() {
+      clearOverlays();
+
+      Object.values(streets).forEach((street) => {
+        overlays.push(new google.maps.Polyline({
+          path: streetDisplayPath(street),
+          map,
+          geodesic: true,
+          strokeColor: '#fff7d6',
+          strokeOpacity: 0.92,
+          strokeWeight: 18,
+          zIndex: 10
+        }));
+
+        overlays.push(new google.maps.Polyline({
+          path: streetDisplayPath(street),
+          map,
+          geodesic: true,
+          strokeColor: street.color,
+          strokeOpacity: 0.96,
+          strokeWeight: 8,
+          zIndex: 11
+        }));
+
+        const labelPoint = streetGamePoint(street, 0.08);
+        overlays.push(new google.maps.Marker({
+          position: labelPoint,
+          map,
+          label: { text: street.label, color: '#12251f', fontSize: '14px', fontWeight: '700' },
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
+          zIndex: 12
+        }));
+      });
+    }
+
+    function startLevel(nextLevel) {
+      clearTrashTimers();
+      clearRoundTimer();
+      clearLevelAdvanceTimer();
+      level = nextLevel;
+      score = 0;
+      carriedItems = 0;
+      carriedPoints = 0;
+      timeRemaining = roundDuration();
+      winPanel.classList.remove('visible');
+      restartBtn.textContent = 'Play again';
+      setMessage(`Level ${level}: score 100 points before time runs out.`);
+      updateHUD();
+      makeItems();
+      startRoundTimer();
+    }
+
+    function resetGame() {
+      startLevel(1);
+    }
+
+    function debugState() {
+      const firstTrash = items.find((item) => !item.collected && item.active && item.type === 'trash');
+      const firstGold = items.find((item) => !item.collected && item.active && item.type === 'gold');
+      const firstBin = items.find((item) => !item.collected && item.type === 'bin');
+      return {
+        score,
+        level,
+        timeRemaining,
+        roundDuration: roundDuration(),
+        trashSpeedMultiplier: Number(levelMultiplier().toFixed(4)),
+        carriedItems,
+        carriedPoints,
+        totalItems: items.length,
+        bins: items.filter((item) => item.type === 'bin').length,
+        trash: items.filter((item) => item.type === 'trash').length,
+        gold: items.filter((item) => item.type === 'gold').length,
+        activeTrash: items.filter((item) => !item.collected && item.active && item.type === 'trash').length,
+        activeGold: items.filter((item) => !item.collected && item.active && item.type === 'gold').length,
+        visibleMarkers: markers.filter((marker) => marker.getMap()).length,
+        firstTrash: screenPosition(firstTrash),
+        firstGold: screenPosition(firstGold),
+        firstBin: screenPosition(firstBin)
+      };
+    }
+
+    function debugMarkerSizes() {
+      return markers.slice(0, 8).map((marker) => {
+        const size = marker.getIcon().scaledSize;
+        return { width: size.width, height: size.height };
+      });
+    }
+
+    function initGame() {
+      map = new google.maps.Map(document.getElementById('map'), {
+        center: { lat: 49.2013, lng: -122.9104 },
+        zoom: 16,
+        mapTypeId: 'roadmap',
+        disableDefaultUI: true,
+        gestureHandling: 'greedy',
+        restriction: {
+          latLngBounds: downtownBounds,
+          strictBounds: false
+        },
+        styles: [
+          { elementType: 'geometry', stylers: [{ saturation: -45 }, { lightness: 10 }] },
+          { elementType: 'labels', stylers: [{ lightness: -8 }] },
+          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+          { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ lightness: 18 }] },
+          { featureType: 'road', elementType: 'labels', stylers: [{ visibility: 'simplified' }] }
+        ]
+      });
+
+      overlays.push(new google.maps.Rectangle({
+        bounds: downtownBounds,
+        map,
+        fillColor: '#17231f',
+        fillOpacity: 0.30,
+        strokeOpacity: 0,
+        clickable: false,
+        zIndex: 1
+      }));
+
+      drawStreetOverlays();
+      resetGame();
+      map.addListener('zoom_changed', updateMarkerIconSizes);
+      window.__debugMarkerSizes = debugMarkerSizes;
+      window.__debugSetZoom = (zoom) => map.setZoom(zoom);
+
+      setTimeout(() => {
+        if (document.querySelector('.gm-err-container')) {
+          useFallbackMap('Google Maps needs the Maps JavaScript API enabled for this key. Local map is active for now.');
+        }
+      }, 1200);
+    }
+
+    window.gm_authFailure = () => useFallbackMap('Google Maps needs the Maps JavaScript API enabled for this key. Local map is active for now.');
+    window.addEventListener('resize', resizeFallbackMap);
+    fallbackCanvas.addEventListener('click', handleFallbackClick);
+    restartBtn.addEventListener('click', resetGame);
+    window.initGame = initGame;
+  </script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCDr-H52z_3hUkkPvvddA7rF6BWwtaesO8&callback=initGame"></script>
+</body>
+</html>
