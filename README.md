@@ -2,7 +2,7 @@
 
 This game was created based on this comment from the NWP where they seem to be claiming they'll add 100 garbage cans in Downtown New Westminster. I thought that sounded like a fun visualization! A few hours later, and here we are!
 
-<img width="722" height="313" alt="image" src="https://github.com/user-attachments/assets/16ef4cbd-80ce-4a2f-9e4c-4219bff12f24" />
+<img width="722" height="313" alt="image" src="https://github.com/user-attachments/assets/eb87c5f6-2776-4729-8d1e-768282a7261d" />
 
 ---
 
