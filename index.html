@@ -152,6 +152,49 @@
       background: #263a34;
       cursor: pointer;
     }
+
+    #intro-panel {
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(15, 23, 20, 0.82);
+      cursor: pointer;
+    }
+
+    #intro-panel.hidden { display: none; }
+
+    .intro-box {
+      width: min(480px, 100%);
+      padding: 24px;
+      color: #13201b;
+      background: #f8f3dd;
+      border: 3px solid #d7a63f;
+      border-radius: 8px;
+      text-align: center;
+      cursor: default;
+      box-shadow: 0 20px 46px rgba(0, 0, 0, 0.28);
+    }
+
+    .intro-box h1 {
+      margin: 0 0 12px;
+      font-size: 26px;
+    }
+
+    .intro-box p {
+      margin: 0 0 12px;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+
+    .intro-box p:last-child { margin-bottom: 0; }
+
+    .intro-prompt {
+      color: #7a5a10;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -174,6 +217,15 @@
         <h1 id="round-title">Downtown cleaned.</h1>
         <p id="round-summary">You scored 100 points and won.</p>
         <button id="restart-btn">Play again</button>
+      </div>
+    </div>
+
+    <div id="intro-panel">
+      <div class="intro-box">
+        <h1>New West Clean-Up</h1>
+        <p>Race against the clock to clean up Downtown New Westminster and make it less scary and dangerous!</p>
+        <p>Click the red trash for <strong>1 point</strong>, and the gold trash for <strong>10 points</strong>. Your bag can hold <strong>8</strong> pieces of trash at a time before you need to dump it into one of the bins.</p>
+        <p class="intro-prompt">Press any key or tap/click here to get started!</p>
       </div>
     </div>
   </div>
@@ -218,6 +270,9 @@
     const roundTitle = document.getElementById('round-title');
     const roundSummary = document.getElementById('round-summary');
     const restartBtn = document.getElementById('restart-btn');
+    const introPanel = document.getElementById('intro-panel');
+    let introDismissed = false;
+    let modeReady = false;
 
     const downtownBounds = {
       north: 49.2072,
@@ -310,9 +365,9 @@
     };
 
     const iconStyles = {
-      bin: { symbol: '🗑', color: '#2e8b57', baseSize: 18, fontSize: 15 },
-      trash: { symbol: '●', color: '#d94d3f', baseSize: 20, fontSize: 18 },
-      gold: { symbol: '★', color: '#d7a516', baseSize: 22, fontSize: 18 }
+      bin: { symbol: '🗑', color: '#2e8b57', baseSize: 21, fontSize: 15 },
+      trash: { symbol: '●', color: '#d94d3f', baseSize: 24, fontSize: 18 },
+      gold: { symbol: '★', color: '#d7a516', baseSize: 26, fontSize: 18 }
     };
 
     function setMessage(text) {
@@ -407,10 +462,14 @@
     }
 
     function createEmojiIcon(symbol, color, size = 24, fontSize = 17) {
+      // The svg canvas (50x50) is deliberately bigger than the visible circle (r=18) so
+      // there's transparent padding around it. Combined with `optimized: false` on the
+      // marker, the whole square (not just the solid circle) becomes tappable, which
+      // gives a noticeably more forgiving touch target on mobile.
       const svg = encodeURIComponent(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 42 42">
-          <circle cx="21" cy="21" r="18" fill="${color}" stroke="white" stroke-width="3"/>
-          <text x="21" y="27" text-anchor="middle" font-size="${fontSize}" font-family="Arial, sans-serif">${symbol}</text>
+        <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
+          <circle cx="25" cy="25" r="18" fill="${color}" stroke="white" stroke-width="3"/>
+          <text x="25" y="31" text-anchor="middle" font-size="${fontSize}" font-family="Arial, sans-serif">${symbol}</text>
         </svg>`);
       return {
         url: `data:image/svg+xml;charset=UTF-8,${svg}`,
@@ -463,7 +522,13 @@
         icon: iconForItem(item),
         opacity: item.type === 'bin' || item.active ? 1 : 0,
         title: item.type === 'bin' ? 'Trash can' : item.type === 'gold' ? 'Gold trash: 10 points' : 'Garbage: 1 point',
-        zIndex: item.type === 'bin' ? 100 : item.type === 'gold' ? 90 : 30
+        // Trash/gold always render (and can be tapped) above bins, so a bin sitting
+        // near a piece of garbage never blocks or visually covers it.
+        zIndex: item.type === 'bin' ? 20 : item.type === 'gold' ? 90 : 80,
+        // Forces real DOM rendering instead of the shared-canvas "optimized" mode, whose
+        // hit-testing only counts fully opaque pixels. This makes the whole icon square
+        // (including the transparent padding added in createEmojiIcon) tappable.
+        optimized: false
       });
 
       marker.addListener('click', () => handleItemClick(item));
@@ -813,8 +878,8 @@
       clearMarkers();
       setMessage(reason || 'Google Maps is unavailable, so the local top-down map is active.');
       resizeFallbackMap();
-      if (items.length === 0) resetGame();
-      else drawFallbackMap();
+      modeReady = true;
+      tryStartGame();
     }
 
     function drawStreetOverlays() {
@@ -871,6 +936,19 @@
 
     function resetGame() {
       startLevel(1);
+    }
+
+    function tryStartGame() {
+      if (!modeReady || !introDismissed) return;
+      if (items.length === 0) resetGame();
+    }
+
+    function dismissIntro() {
+      if (introDismissed) return;
+      introDismissed = true;
+      introPanel.classList.add('hidden');
+      document.removeEventListener('keydown', dismissIntro);
+      tryStartGame();
     }
 
     function debugState() {
@@ -937,7 +1015,8 @@
       }));
 
       drawStreetOverlays();
-      resetGame();
+      modeReady = true;
+      tryStartGame();
       map.addListener('zoom_changed', updateMarkerIconSizes);
       window.__debugMarkerSizes = debugMarkerSizes;
       window.__debugSetZoom = (zoom) => map.setZoom(zoom);
@@ -953,6 +1032,8 @@
     window.addEventListener('resize', resizeFallbackMap);
     fallbackCanvas.addEventListener('click', handleFallbackClick);
     restartBtn.addEventListener('click', resetGame);
+    introPanel.addEventListener('click', dismissIntro);
+    document.addEventListener('keydown', dismissIntro);
     window.initGame = initGame;
   </script>
   <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCDr-H52z_3hUkkPvvddA7rF6BWwtaesO8&callback=initGame"></script>
