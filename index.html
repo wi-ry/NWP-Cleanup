@@ -176,6 +176,8 @@
 
     .intro-box {
       width: min(480px, 100%);
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
       padding: 24px;
       color: #13201b;
       background: #f8f3dd;
@@ -203,6 +205,75 @@
       color: #7a5a10;
       font-weight: 700;
     }
+
+    .mode-toggle {
+      display: flex;
+      margin: 2px 0 16px;
+      border: 2px solid #d7a63f;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .mode-toggle-btn {
+      flex: 1;
+      padding: 10px 12px;
+      border: 0;
+      background: #f8f3dd;
+      color: #7a5a10;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .mode-toggle-btn + .mode-toggle-btn {
+      border-left: 2px solid #d7a63f;
+    }
+
+    .mode-toggle-btn.active {
+      background: #d7a63f;
+      color: #2b2007;
+    }
+
+    .mode-rules.hidden {
+      display: none;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px 14px;
+      margin: 2px 0 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #3a2f10;
+    }
+
+    .legend-icon {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+      font-size: 14px;
+      color: #fff;
+    }
+
+    .legend-icon.trash { background: #d94d3f; }
+    .legend-icon.recycling { background: #9b59d0; }
+    .legend-icon.gold { background: #d7a516; }
+    .legend-icon.bin { background: #2e8b57; }
+    .legend-icon.recycle-bin { background: #1f6fb0; }
 
     #bag-full-popup {
       position: absolute;
@@ -244,14 +315,14 @@
     <canvas id="fallback-map"></canvas>
 
     <div id="ui-bar">
-      <div class="hud-title">New West Clean-Up</div>
+      <div class="hud-title" id="hud-title">New West Clean-Up</div>
       <div class="hud-item"><span class="hud-label">World</span><span class="hud-value" id="level-count">1-1</span></div>
       <div class="hud-item"><span class="hud-label">Time</span><span class="hud-value" id="timer-count">120</span></div>
       <div class="hud-item"><span class="hud-label">Bag</span><span class="hud-value" id="inv-count">0 / 0</span></div>
       <div class="hud-item"><span class="hud-label">Score</span><span class="hud-value" id="total-score">000000</span></div>
     </div>
 
-    <div id="message">Click garbage to pick it up. Click a trash can to dump what you are carrying.</div>
+    <div id="message">Click garbage to pick it up. Click a bin to dump what you are carrying.</div>
 
     <div id="win-panel">
       <div class="win-box">
@@ -265,12 +336,39 @@
       <div class="intro-box">
         <h1>New West Clean-Up</h1>
         <p>Race against the clock to clean up Downtown New Westminster and make it less scary and dangerous!</p>
-        <p>Click the red trash for <strong>1 point</strong>, and the gold trash for <strong>10 points</strong>. Your bag can hold <strong>8</strong> pieces of trash at a time before you need to dump it into one of the bins.</p>
-        <p class="intro-prompt">Press any key or tap/click here to get started!</p>
+
+        <div class="mode-toggle" role="group" aria-label="Choose difficulty">
+          <button type="button" class="mode-toggle-btn active" id="mode-normal-btn">Normal</button>
+          <button type="button" class="mode-toggle-btn" id="mode-hard-btn">Hard</button>
+        </div>
+
+        <div class="mode-rules" id="mode-rules-normal">
+          <div class="legend">
+            <div class="legend-item"><span class="legend-icon trash">●</span>Trash — 1 pt</div>
+            <div class="legend-item"><span class="legend-icon gold">★</span>Gold — 10 pts</div>
+            <div class="legend-item"><span class="legend-icon bin">🗑</span>Bin</div>
+          </div>
+          <p>Click a piece of trash to pick it up. Gold trash is worth more but disappears fast, so grab it quick! Once your bag holds <strong>8</strong> items, click any bin to dump them all for points.</p>
+        </div>
+
+        <div class="mode-rules hidden" id="mode-rules-hard">
+          <div class="legend">
+            <div class="legend-item"><span class="legend-icon trash">●</span>Garbage — 1 pt</div>
+            <div class="legend-item"><span class="legend-icon recycling">♻</span>Recycling — 2 pts</div>
+            <div class="legend-item"><span class="legend-icon gold">★</span>Gold — 10 pts</div>
+          </div>
+          <div class="legend">
+            <div class="legend-item"><span class="legend-icon bin">🗑</span>Garbage bin</div>
+            <div class="legend-item"><span class="legend-icon recycle-bin">♻</span>Recycling bin</div>
+          </div>
+          <p>Click garbage and recycling to collect them — your bag can hold <strong>8</strong> items of either kind at once. Dump garbage in the <strong>green</strong> bin and recycling in the <strong>blue</strong> bin. Use the wrong bin and it won't score, so choose carefully!</p>
+        </div>
+
+        <p class="intro-prompt" id="intro-prompt">Press any key or tap/click here to start Normal Mode!</p>
       </div>
     </div>
 
-    <div id="bag-full-popup">Your bag is full! Dump it in a trash can first.</div>
+    <div id="bag-full-popup">Your bag is full! Dump it in a bin first.</div>
   </div>
 
   <script>
@@ -282,8 +380,14 @@
     let level = 1;
     let timeRemaining = baseRoundSeconds;
     let score = 0;
-    let carriedItems = 0;
-    let carriedPoints = 0;
+    let difficulty = 'normal';
+    // Tracks what's in the bag, split by kind, since Hard Mode requires dumping garbage
+    // and recycling into different bins. Normal Mode only ever populates `garbage`, so
+    // all the shared logic below works unchanged for both modes.
+    let carried = {
+      garbage: { count: 0, points: 0 },
+      recycling: { count: 0, points: 0 }
+    };
     let markers = [];
     let overlays = [];
     let items = [];
@@ -297,6 +401,10 @@
       initialMax: 7000,
       visibleMin: 14000,
       visibleMax: 26000,
+      // Gold is worth 10 points, so it stays visible for much less time than regular
+      // trash/recycling -- it's meant to be a rare, urgent grab, not a easy sit-and-wait.
+      goldVisibleMin: 4000,
+      goldVisibleMax: 7500,
       hiddenMin: 4500,
       hiddenMax: 9500
     };
@@ -314,8 +422,15 @@
     const roundSummary = document.getElementById('round-summary');
     const restartBtn = document.getElementById('restart-btn');
     const introPanel = document.getElementById('intro-panel');
+    const modeNormalBtn = document.getElementById('mode-normal-btn');
+    const modeHardBtn = document.getElementById('mode-hard-btn');
+    const modeRulesNormal = document.getElementById('mode-rules-normal');
+    const modeRulesHard = document.getElementById('mode-rules-hard');
+    const introPromptEl = document.getElementById('intro-prompt');
+    const hudTitleEl = document.getElementById('hud-title');
     const bagFullPopup = document.getElementById('bag-full-popup');
     let introDismissed = false;
+    let selectedIntroMode = 'normal';
     let modeReady = false;
 
     const downtownBounds = {
@@ -410,15 +525,28 @@
 
     const iconStyles = {
       bin: { symbol: '🗑', color: '#2e8b57', baseSize: 21, fontSize: 15 },
+      'recycle-bin': { symbol: '♻', color: '#1f6fb0', baseSize: 21, fontSize: 15 },
       trash: { symbol: '●', color: '#d94d3f', baseSize: 24, fontSize: 18 },
+      recycling: { symbol: '♻', color: '#9b59d0', baseSize: 24, fontSize: 18 },
       gold: { symbol: '★', color: '#d7a516', baseSize: 26, fontSize: 18 }
     };
+
+    // Both regular bins and recycling bins should be treated the same way by the game
+    // loop (only their `kind` differs, which controls what they'll accept).
+    function isBinType(type) {
+      return type === 'bin' || type === 'recycle-bin';
+    }
 
     function setMessage(text) {
       messageEl.textContent = text;
     }
 
-    function flashBagFullPopup() {
+    function totalCarried() {
+      return carried.garbage.count + carried.recycling.count;
+    }
+
+    function flashToast(text) {
+      bagFullPopup.textContent = text;
       bagFullPopup.classList.remove('show');
       // Force a reflow so re-adding the class restarts the CSS animation,
       // even if the popup is already mid-animation from a previous click.
@@ -426,11 +554,15 @@
       bagFullPopup.classList.add('show');
     }
 
+    function flashBagFullPopup() {
+      flashToast('Your bag is full! Dump it in a bin first.');
+    }
+
     function updateHUD() {
       levelEl.textContent = `${level}-1`;
       timerEl.textContent = formatTime(timeRemaining);
       timerEl.classList.toggle('warning', timeRemaining <= 20 && timeRemaining > 0);
-      inventoryEl.textContent = `${carriedItems}/${maxCarry}`;
+      inventoryEl.textContent = `${totalCarried()}/${maxCarry}`;
       scoreEl.textContent = String(Math.min(score, winScore)).padStart(6, '0');
     }
 
@@ -572,11 +704,15 @@
         position: item.position,
         map: item.active ? map : null,
         icon: iconForItem(item),
-        opacity: item.type === 'bin' || item.active ? 1 : 0,
-        title: item.type === 'bin' ? 'Trash can' : item.type === 'gold' ? 'Gold trash: 10 points' : 'Garbage: 1 point',
-        // Trash/gold always render (and can be tapped) above bins, so a bin sitting
-        // near a piece of garbage never blocks or visually covers it.
-        zIndex: item.type === 'bin' ? 20 : item.type === 'gold' ? 90 : 80,
+        opacity: isBinType(item.type) || item.active ? 1 : 0,
+        title: item.type === 'bin' ? 'Garbage bin'
+          : item.type === 'recycle-bin' ? 'Recycling bin'
+          : item.type === 'gold' ? 'Gold trash: 10 points'
+          : item.type === 'recycling' ? 'Recycling: 1 point'
+          : 'Garbage: 1 point',
+        // Trash/recycling/gold always render (and can be tapped) above bins, so a bin
+        // sitting near a piece of garbage never blocks or visually covers it.
+        zIndex: isBinType(item.type) ? 20 : item.type === 'gold' ? 90 : 80,
         // Forces real DOM rendering instead of the shared-canvas "optimized" mode, whose
         // hit-testing only counts fully opaque pixels. This makes the whole icon square
         // (including the transparent padding added in createEmojiIcon) tappable.
@@ -597,7 +733,7 @@
     }
 
     function animateTrashIn(item) {
-      if (fallbackMode || item.type === 'bin' || item.collected || !item.marker) return;
+      if (fallbackMode || isBinType(item.type) || item.collected || !item.marker) return;
 
       const duration = 520;
       const started = performance.now();
@@ -627,7 +763,7 @@
     }
 
     function setItemActive(item, active) {
-      if (item.type === 'bin' || item.collected) return;
+      if (isBinType(item.type) || item.collected) return;
 
       item.active = active;
       if (item.marker) {
@@ -638,12 +774,17 @@
     }
 
     function scheduleTrashToggle(item, delay = randomBetween(scaledTrashTime(trashTiming.initialMin), scaledTrashTime(trashTiming.initialMax))) {
-      if (item.type === 'bin' || item.collected || score >= winScore) return;
+      if (isBinType(item.type) || item.collected || score >= winScore) return;
 
       const timer = setTimeout(() => {
         if (!item.collected && score < winScore) {
           setItemActive(item, !item.active);
-          scheduleTrashToggle(item, item.active ? randomBetween(scaledTrashTime(trashTiming.visibleMin), scaledTrashTime(trashTiming.visibleMax)) : randomBetween(scaledTrashTime(trashTiming.hiddenMin), scaledTrashTime(trashTiming.hiddenMax)));
+          const nextDelay = item.active
+            ? item.type === 'gold'
+              ? randomBetween(scaledTrashTime(trashTiming.goldVisibleMin), scaledTrashTime(trashTiming.goldVisibleMax))
+              : randomBetween(scaledTrashTime(trashTiming.visibleMin), scaledTrashTime(trashTiming.visibleMax))
+            : randomBetween(scaledTrashTime(trashTiming.hiddenMin), scaledTrashTime(trashTiming.hiddenMax));
+          scheduleTrashToggle(item, nextDelay);
         }
       }, delay);
       trashTimers.push(timer);
@@ -666,6 +807,7 @@
       clearWiggleAnimations();
       clearMarkers();
 
+      const isHard = difficulty === 'hard';
       const binCounts = { carnarvon: 33, front: 33, columbia: 34 };
 
       Object.entries(streets).forEach(([streetKey, street]) => {
@@ -673,10 +815,12 @@
           const ratio = (index + 0.5) / binCounts[streetKey];
           const sideLane = index % 4 < 2 ? 1 : -1;
           const sideDistance = index % 2 === 0 ? 13 : 18;
+          const isRecycleBin = isHard && index % 2 === 1;
           items.push({
             id: `${streetKey}-bin-${index}`,
             street: streetKey,
-            type: 'bin',
+            type: isRecycleBin ? 'recycle-bin' : 'bin',
+            kind: isRecycleBin ? 'recycling' : 'garbage',
             value: 0,
             active: true,
             position: streetGamePoint(street, ratio, sideLane * sideDistance)
@@ -693,14 +837,18 @@
           const slot = trashSlots[index % trashSlots.length];
           const cycle = Math.floor(index / trashSlots.length);
           const ratio = Math.max(0.08, Math.min(0.92, slot + (cycle - 2) * 0.011));
-          const isGold = trashIndex % 15 === 0;
+          // Half the pickups are recycling in Hard Mode; gold only ever shows up on the
+          // garbage side, keeping it a straightforward high-value garbage bonus.
+          const isRecycling = isHard && index % 2 === 1;
+          const isGold = !isRecycling && trashIndex % 15 === 0;
           const sideLane = index % 4 < 2 ? -1 : 1;
           const sideDistance = isGold ? 30 : index % 2 === 0 ? 23 : 28;
           items.push({
             id: `${streetKey}-trash-${index}`,
             street: streetKey,
-            type: isGold ? 'gold' : 'trash',
-            value: isGold ? 10 : 1,
+            type: isRecycling ? 'recycling' : isGold ? 'gold' : 'trash',
+            kind: isRecycling ? 'recycling' : 'garbage',
+            value: isGold ? 10 : isRecycling ? 2 : 1,
             active: index % 4 !== 0,
             position: streetGamePoint(street, ratio, sideLane * sideDistance)
           });
@@ -717,28 +865,48 @@
     function handleItemClick(item) {
       if (score >= winScore || timeRemaining <= 0 || winPanel.classList.contains('visible')) return;
 
-      if (item.type === 'bin') {
-        if (carriedItems === 0) {
-          setMessage('Pick up garbage first, then click a trash can to dump it.');
+      if (isBinType(item.type)) {
+        const binKind = item.kind;
+        const otherKind = binKind === 'garbage' ? 'recycling' : 'garbage';
+        const matching = carried[binKind];
+        const other = carried[otherKind];
+
+        if (matching.count === 0) {
+          if (other.count > 0) {
+            const otherBinLabel = otherKind === 'garbage' ? 'green garbage bin' : 'blue recycling bin';
+            setMessage(`That's the wrong bin for what you're carrying. Find the ${otherBinLabel}.`);
+            flashToast(`Wrong bin! That's for ${binKind}. Find the ${otherBinLabel} instead.`);
+          } else {
+            setMessage('Pick up garbage first, then click a bin to dump it.');
+          }
           return;
         }
 
-        score += carriedPoints;
-        setMessage(`Disposed ${carriedItems} item(s) for ${carriedPoints} point(s).`);
-        carriedItems = 0;
-        carriedPoints = 0;
+        score += matching.points;
+        const dumpedCount = matching.count;
+        const dumpedPoints = matching.points;
+        matching.count = 0;
+        matching.points = 0;
+
         if (score >= winScore) {
           score = winScore;
+          setMessage(`Disposed ${dumpedCount} ${binKind} item(s) for ${dumpedPoints} point(s).`);
           completeLevel();
+          updateHUD();
+          return;
         }
+
+        setMessage(other.count > 0
+          ? `Disposed ${dumpedCount} ${binKind} item(s) for ${dumpedPoints} point(s). Still carrying ${other.count} ${otherKind} item(s).`
+          : `Disposed ${dumpedCount} ${binKind} item(s) for ${dumpedPoints} point(s).`);
         updateHUD();
         return;
       }
 
       if (!item.active) return;
 
-      if (carriedItems >= maxCarry) {
-        setMessage('Your bag is full. Click a trash can to dump it.');
+      if (totalCarried() >= maxCarry) {
+        setMessage('Your bag is full. Click a bin to dump it.');
         flashBagFullPopup();
         return;
       }
@@ -746,9 +914,13 @@
       if (item.marker) item.marker.setMap(null);
       item.collected = true;
       item.active = false;
-      carriedItems += 1;
-      carriedPoints += item.value;
-      setMessage(item.type === 'gold' ? 'Gold trash collected. Dump it for 10 points.' : 'Garbage collected. Dump it in a trash can for 1 point.');
+      carried[item.kind].count += 1;
+      carried[item.kind].points += item.value;
+      setMessage(item.type === 'gold'
+        ? 'Gold trash collected. Dump it in a garbage bin for 10 points.'
+        : item.type === 'recycling'
+          ? 'Recycling collected. Dump it in the blue recycling bin for 2 points.'
+          : 'Garbage collected. Dump it in a garbage bin.');
       updateHUD();
       drawFallbackMap();
     }
@@ -870,12 +1042,16 @@
 
       items.forEach((item) => {
         if (item.collected) return;
-        if (item.type !== 'bin' && !item.active) return;
+        if (!isBinType(item.type) && !item.active) return;
         const point = project(item.position);
-        const size = item.type === 'bin' ? 13 : item.type === 'gold' ? 16 : 14;
+        const size = isBinType(item.type) ? 13 : item.type === 'gold' ? 16 : 14;
         fallbackCtx.beginPath();
         fallbackCtx.arc(point.x, point.y, size, 0, Math.PI * 2);
-        fallbackCtx.fillStyle = item.type === 'bin' ? '#2e8b57' : item.type === 'gold' ? '#d7a516' : '#d94d3f';
+        fallbackCtx.fillStyle = item.type === 'bin' ? '#2e8b57'
+          : item.type === 'recycle-bin' ? '#1f6fb0'
+          : item.type === 'gold' ? '#d7a516'
+          : item.type === 'recycling' ? '#9b59d0'
+          : '#d94d3f';
         fallbackCtx.fill();
         fallbackCtx.strokeStyle = '#fff';
         fallbackCtx.lineWidth = 3;
@@ -884,7 +1060,10 @@
         fallbackCtx.font = 'bold 16px Verdana, Geneva, sans-serif';
         fallbackCtx.textAlign = 'center';
         fallbackCtx.textBaseline = 'middle';
-        fallbackCtx.fillText(item.type === 'bin' ? 'T' : item.type === 'gold' ? '★' : '•', point.x, point.y + 1);
+        fallbackCtx.fillText(item.type === 'bin' ? 'T'
+          : item.type === 'recycle-bin' || item.type === 'recycling' ? '♻'
+          : item.type === 'gold' ? '★'
+          : '•', point.x, point.y + 1);
       });
     }
 
@@ -894,9 +1073,9 @@
       for (let index = items.length - 1; index >= 0; index--) {
         const item = items[index];
         if (item.collected) continue;
-        if (item.type !== 'bin' && !item.active) continue;
+        if (!isBinType(item.type) && !item.active) continue;
         const point = project(item.position);
-        const radius = item.type === 'bin' ? 23 : 21;
+        const radius = isBinType(item.type) ? 23 : 21;
         if (Math.hypot(point.x - click.x, point.y - click.y) <= radius) return item;
       }
       return null;
@@ -928,13 +1107,13 @@
     // area -- e.g. a small amount of finger movement during a tap, or two icons close
     // together -- since native marker clicks can otherwise miss by just a few pixels.
     function findNearbyItem(point, radius) {
-      const priorityGroups = [['gold', 'trash'], ['bin']];
+      const priorityGroups = [['gold', 'trash', 'recycling'], ['bin', 'recycle-bin']];
       for (const types of priorityGroups) {
         let best = null;
         let bestDistance = radius;
         for (const item of items) {
           if (item.collected || !types.includes(item.type)) continue;
-          if (item.type !== 'bin' && !item.active) continue;
+          if (!isBinType(item.type) && !item.active) continue;
           const itemPoint = screenPosition(item);
           if (!itemPoint) continue;
           const distance = Math.hypot(itemPoint.x - point.x, itemPoint.y - point.y);
@@ -961,7 +1140,7 @@
     function handleFallbackClick(event) {
       const item = fallbackItemAt(event.clientX, event.clientY);
       if (item) handleItemClick(item);
-      else setMessage('Click garbage to pick it up. Click a trash can to dump it.');
+      else setMessage('Click garbage to pick it up. Click a bin to dump it.');
     }
 
     function useFallbackMap(reason) {
@@ -1019,12 +1198,17 @@
       clearLevelAdvanceTimer();
       level = nextLevel;
       score = 0;
-      carriedItems = 0;
-      carriedPoints = 0;
+      carried = {
+        garbage: { count: 0, points: 0 },
+        recycling: { count: 0, points: 0 }
+      };
       timeRemaining = roundDuration();
       winPanel.classList.remove('visible');
       restartBtn.textContent = 'Play again';
-      setMessage(`Level ${level}: score 100 points before time runs out.`);
+      hudTitleEl.textContent = difficulty === 'hard' ? 'New West Clean-Up — Hard Mode' : 'New West Clean-Up';
+      setMessage(difficulty === 'hard'
+        ? `Level ${level}: score 100 points. Garbage goes in the garbage bin, recycling in the recycling bin!`
+        : `Level ${level}: score 100 points before time runs out.`);
       updateHUD();
       makeItems();
       startRoundTimer();
@@ -1039,36 +1223,57 @@
       if (items.length === 0) resetGame();
     }
 
-    function dismissIntro() {
+    function setIntroMode(mode) {
+      selectedIntroMode = mode;
+      modeNormalBtn.classList.toggle('active', mode === 'normal');
+      modeHardBtn.classList.toggle('active', mode === 'hard');
+      modeRulesNormal.classList.toggle('hidden', mode !== 'normal');
+      modeRulesHard.classList.toggle('hidden', mode !== 'hard');
+      introPromptEl.textContent = `Press any key or tap/click here to start ${mode === 'hard' ? 'Hard' : 'Normal'} Mode!`;
+    }
+
+    function beginGame(mode) {
       if (introDismissed) return;
+      difficulty = mode;
       introDismissed = true;
       introPanel.classList.add('hidden');
       document.removeEventListener('keydown', dismissIntro);
       tryStartGame();
     }
 
+    function dismissIntro() {
+      beginGame(selectedIntroMode);
+    }
+
     function debugState() {
       const firstTrash = items.find((item) => !item.collected && item.active && item.type === 'trash');
+      const firstRecycling = items.find((item) => !item.collected && item.active && item.type === 'recycling');
       const firstGold = items.find((item) => !item.collected && item.active && item.type === 'gold');
       const firstBin = items.find((item) => !item.collected && item.type === 'bin');
+      const firstRecycleBin = items.find((item) => !item.collected && item.type === 'recycle-bin');
       return {
+        difficulty,
         score,
         level,
         timeRemaining,
         roundDuration: roundDuration(),
         trashSpeedMultiplier: Number(levelMultiplier().toFixed(4)),
-        carriedItems,
-        carriedPoints,
+        carried: JSON.parse(JSON.stringify(carried)),
         totalItems: items.length,
         bins: items.filter((item) => item.type === 'bin').length,
+        recycleBins: items.filter((item) => item.type === 'recycle-bin').length,
         trash: items.filter((item) => item.type === 'trash').length,
+        recycling: items.filter((item) => item.type === 'recycling').length,
         gold: items.filter((item) => item.type === 'gold').length,
         activeTrash: items.filter((item) => !item.collected && item.active && item.type === 'trash').length,
+        activeRecycling: items.filter((item) => !item.collected && item.active && item.type === 'recycling').length,
         activeGold: items.filter((item) => !item.collected && item.active && item.type === 'gold').length,
         visibleMarkers: markers.filter((marker) => marker.getMap()).length,
         firstTrash: screenPosition(firstTrash),
+        firstRecycling: screenPosition(firstRecycling),
         firstGold: screenPosition(firstGold),
-        firstBin: screenPosition(firstBin)
+        firstBin: screenPosition(firstBin),
+        firstRecycleBin: screenPosition(firstRecycleBin)
       };
     }
 
@@ -1132,8 +1337,17 @@
     restartBtn.addEventListener('click', resetGame);
     introPanel.addEventListener('click', dismissIntro);
     document.addEventListener('keydown', dismissIntro);
+    modeNormalBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setIntroMode('normal');
+    });
+    modeHardBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setIntroMode('hard');
+    });
+    setIntroMode('normal');
     window.initGame = initGame;
   </script>
-  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCDr-H52z_3hUkkPvvddA7rF6BWwtaesO8&callback=initGame"></script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=xxxxxxxxx-xxxx_xxxxxxxxxxxxxxxxxxxxxxxx&callback=initGame"></script>
 </body>
 </html>
