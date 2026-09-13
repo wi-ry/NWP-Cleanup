@@ -333,7 +333,7 @@
       <div class="hud-item"><span class="hud-label">World</span><span class="hud-value" id="level-count">1-1</span></div>
       <div class="hud-item"><span class="hud-label">Time</span><span class="hud-value" id="timer-count">120</span></div>
       <div class="hud-item"><span class="hud-label">Bag</span><span class="hud-value" id="inv-count">0 / 0</span></div>
-      <div class="hud-item"><span class="hud-label">Score</span><span class="hud-value" id="total-score">000000</span></div>
+      <div class="hud-item"><span class="hud-label">Score</span><span class="hud-value" id="total-score">000</span></div>
     </div>
 
     <div id="message">Click garbage to pick it up. Click a bin to dump what you are carrying.</div>
@@ -627,7 +627,7 @@
       timerEl.textContent = formatTime(timeRemaining);
       timerEl.classList.toggle('warning', timeRemaining <= 20 && timeRemaining > 0);
       inventoryEl.textContent = `${totalCarried()}/${effectiveMaxCarry()}`;
-      scoreEl.textContent = String(Math.min(score, winScore)).padStart(6, '0');
+      scoreEl.textContent = String(Math.min(score, winScore)).padStart(3, '0');
     }
 
     function formatTime(seconds) {
@@ -709,18 +709,32 @@
       return base + zoomBoost + (hovered ? 8 : 0);
     }
 
+    // The SVG markup only depends on symbol/color/fontSize, which are all fixed per item
+    // type -- `size` just scales the marker afterward. Caching the encoded data URL here
+    // means hovering or zooming (which only changes size) never re-runs encodeURIComponent
+    // or rebuilds the SVG string; it's computed once per item type for the whole session.
+    const iconUrlCache = new Map();
+
+    function emojiIconUrl(symbol, color, fontSize) {
+      const key = `${symbol}|${color}|${fontSize}`;
+      if (!iconUrlCache.has(key)) {
+        // The svg canvas (50x50) is deliberately bigger than the visible circle (r=18) so
+        // there's transparent padding around it. Combined with `optimized: false` on the
+        // marker, the whole square (not just the solid circle) becomes tappable, which
+        // gives a noticeably more forgiving touch target on mobile.
+        const svg = encodeURIComponent(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
+            <circle cx="25" cy="25" r="18" fill="${color}" stroke="white" stroke-width="3"/>
+            <text x="25" y="31" text-anchor="middle" font-size="${fontSize}" font-family="Arial, sans-serif">${symbol}</text>
+          </svg>`);
+        iconUrlCache.set(key, `data:image/svg+xml;charset=UTF-8,${svg}`);
+      }
+      return iconUrlCache.get(key);
+    }
+
     function createEmojiIcon(symbol, color, size = 24, fontSize = 17) {
-      // The svg canvas (50x50) is deliberately bigger than the visible circle (r=18) so
-      // there's transparent padding around it. Combined with `optimized: false` on the
-      // marker, the whole square (not just the solid circle) becomes tappable, which
-      // gives a noticeably more forgiving touch target on mobile.
-      const svg = encodeURIComponent(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
-          <circle cx="25" cy="25" r="18" fill="${color}" stroke="white" stroke-width="3"/>
-          <text x="25" y="31" text-anchor="middle" font-size="${fontSize}" font-family="Arial, sans-serif">${symbol}</text>
-        </svg>`);
       return {
-        url: `data:image/svg+xml;charset=UTF-8,${svg}`,
+        url: emojiIconUrl(symbol, color, fontSize),
         scaledSize: new google.maps.Size(size, size),
         anchor: new google.maps.Point(size / 2, size / 2)
       };
@@ -734,15 +748,6 @@
     function clearMarkers() {
       markers.forEach((marker) => marker.setMap(null));
       markers = [];
-    }
-
-    function clearWiggleAnimations() {
-      items.forEach((item) => {
-        if (item.wiggleFrameId) {
-          cancelAnimationFrame(item.wiggleFrameId);
-          item.wiggleFrameId = null;
-        }
-      });
     }
 
     function clearTrashTimers() {
@@ -795,58 +800,19 @@
       markers.push(marker);
     }
 
-    function wigglePosition(position, elapsed) {
-      const wobbleMeters = Math.sin(elapsed / 125) * 0.65;
-      const metersToLng = wobbleMeters / (111320 * Math.cos(position.lat * Math.PI / 180));
-      return { lat: position.lat, lng: position.lng + metersToLng };
-    }
-
-    function animateTrashIn(item) {
-      if (fallbackMode || isBinType(item.type) || item.collected || !item.marker) return;
-      // Cancel any in-flight wiggle for this item (e.g. it was toggled active again
-      // before its previous animation finished) so we never run two at once.
-      if (item.wiggleFrameId) cancelAnimationFrame(item.wiggleFrameId);
-
-      const duration = 520;
-      const started = performance.now();
-      item.marker.setOpacity(0);
-
-      function frame(now) {
-        if (item.collected || !item.active || !item.marker) {
-          item.wiggleFrameId = null;
-          return;
-        }
-
-        const elapsed = now - started;
-        const progress = Math.min(elapsed / duration, 1);
-        item.marker.setOpacity(progress);
-        item.marker.setPosition(wigglePosition(item.position, elapsed));
-
-        if (progress < 1) {
-          item.wiggleFrameId = requestAnimationFrame(frame);
-        } else {
-          item.wiggleFrameId = null;
-          item.marker.setOpacity(1);
-          item.marker.setPosition(item.position);
-        }
-      }
-
-      item.wiggleFrameId = requestAnimationFrame(frame);
-    }
-
-    function randomBetween(min, max) {
-      return min + Math.random() * (max - min);
-    }
-
     function setItemActive(item, active) {
       if (isBinType(item.type) || item.collected) return;
 
       item.active = active;
       if (item.marker) {
         item.marker.setMap(active ? map : null);
-        if (active) animateTrashIn(item);
+        if (active) item.marker.setOpacity(1);
       }
       drawFallbackMap();
+    }
+
+    function randomBetween(min, max) {
+      return min + Math.random() * (max - min);
     }
 
     function scheduleTrashToggle(item, delay = randomBetween(scaledTrashTime(trashTiming.initialMin), scaledTrashTime(trashTiming.initialMax))) {
@@ -879,7 +845,6 @@
 
     function makeItems() {
       clearTrashTimers();
-      clearWiggleAnimations();
       clearMarkers();
       items = [];
 
@@ -1353,7 +1318,6 @@
       clearTrashTimers();
       clearLevelAdvanceTimer();
       clearBagPenalties();
-      clearWiggleAnimations();
       winPanel.classList.remove('visible');
       introDismissed = false;
       introPanel.classList.remove('hidden');
