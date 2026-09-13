@@ -8,6 +8,12 @@ This game was created based on this comment from the NWP where they seem to be c
 
 Playable here: https://wi-ry.github.io/NWP-Cleanup/
 
-I managed to win the whole game, so you can too :)
+## Release Notes
+- 2026/09/12 - Added hard mode and tweaked UI
+- 2026/09/11 - Initial game release
+
+---
+
+I managed to win the whole game, so you can too! :)
 
 <img width="689" height="936" alt="image" src="https://github.com/user-attachments/assets/749dbd62-5367-4e34-9e19-dbe49e824d10" />
