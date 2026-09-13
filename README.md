@@ -9,6 +9,7 @@ This game was created based on this comment from the NWP where they seem to be c
 Playable here: https://wi-ry.github.io/NWP-Cleanup/
 
 ## Release Notes
+- 2026/09/13 - Added nightmare mode with propaganda debuffs
 - 2026/09/12 - Added hard mode and tweaked UI
 - 2026/09/11 - Initial game release
 
