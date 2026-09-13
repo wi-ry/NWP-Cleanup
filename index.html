@@ -151,14 +151,27 @@
       font-size: 26px;
     }
 
-    .win-box button {
+    .win-actions {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px;
       margin-top: 14px;
+    }
+
+    .win-box button {
       padding: 10px 16px;
       border: 0;
       border-radius: 5px;
       color: #f7fff4;
       background: #263a34;
       cursor: pointer;
+    }
+
+    .win-box button.secondary {
+      color: #263a34;
+      background: transparent;
+      border: 2px solid #263a34;
     }
 
     #intro-panel {
@@ -329,7 +342,10 @@
       <div class="win-box">
         <h1 id="round-title">Downtown cleaned.</h1>
         <p id="round-summary">You scored 100 points and won.</p>
-        <button id="restart-btn">Play again</button>
+        <div class="win-actions">
+          <button id="restart-btn">Play again</button>
+          <button id="change-mode-btn" class="secondary" type="button">Change Mode</button>
+        </div>
       </div>
     </div>
 
@@ -413,7 +429,6 @@
     let overlays = [];
     let items = [];
     let trashTimers = [];
-    let wiggleAnimations = [];
     let roundTimer = null;
     let levelAdvanceTimer = null;
     let fallbackMode = false;
@@ -442,6 +457,7 @@
     const roundTitle = document.getElementById('round-title');
     const roundSummary = document.getElementById('round-summary');
     const restartBtn = document.getElementById('restart-btn');
+    const changeModeBtn = document.getElementById('change-mode-btn');
     const introPanel = document.getElementById('intro-panel');
     const modeNormalBtn = document.getElementById('mode-normal-btn');
     const modeHardBtn = document.getElementById('mode-hard-btn');
@@ -455,6 +471,7 @@
     let introDismissed = false;
     let selectedIntroMode = 'normal';
     let modeReady = false;
+    let hasStartedOnce = false;
 
     const downtownBounds = {
       north: 49.2072,
@@ -720,8 +737,12 @@
     }
 
     function clearWiggleAnimations() {
-      wiggleAnimations.forEach((animation) => cancelAnimationFrame(animation));
-      wiggleAnimations = [];
+      items.forEach((item) => {
+        if (item.wiggleFrameId) {
+          cancelAnimationFrame(item.wiggleFrameId);
+          item.wiggleFrameId = null;
+        }
+      });
     }
 
     function clearTrashTimers() {
@@ -782,13 +803,19 @@
 
     function animateTrashIn(item) {
       if (fallbackMode || isBinType(item.type) || item.collected || !item.marker) return;
+      // Cancel any in-flight wiggle for this item (e.g. it was toggled active again
+      // before its previous animation finished) so we never run two at once.
+      if (item.wiggleFrameId) cancelAnimationFrame(item.wiggleFrameId);
 
       const duration = 520;
       const started = performance.now();
       item.marker.setOpacity(0);
 
       function frame(now) {
-        if (item.collected || !item.active || !item.marker) return;
+        if (item.collected || !item.active || !item.marker) {
+          item.wiggleFrameId = null;
+          return;
+        }
 
         const elapsed = now - started;
         const progress = Math.min(elapsed / duration, 1);
@@ -796,14 +823,15 @@
         item.marker.setPosition(wigglePosition(item.position, elapsed));
 
         if (progress < 1) {
-          wiggleAnimations.push(requestAnimationFrame(frame));
+          item.wiggleFrameId = requestAnimationFrame(frame);
         } else {
+          item.wiggleFrameId = null;
           item.marker.setOpacity(1);
           item.marker.setPosition(item.position);
         }
       }
 
-      wiggleAnimations.push(requestAnimationFrame(frame));
+      item.wiggleFrameId = requestAnimationFrame(frame);
     }
 
     function randomBetween(min, max) {
@@ -850,10 +878,10 @@
     }
 
     function makeItems() {
-      items = [];
       clearTrashTimers();
       clearWiggleAnimations();
       clearMarkers();
+      items = [];
 
       const isHard = difficulty === 'hard' || difficulty === 'nightmare';
       const isNightmare = difficulty === 'nightmare';
@@ -1261,6 +1289,7 @@
       clearRoundTimer();
       clearLevelAdvanceTimer();
       clearBagPenalties();
+      hasStartedOnce = true;
       level = nextLevel;
       score = 0;
       carried = {
@@ -1311,7 +1340,25 @@
       introDismissed = true;
       introPanel.classList.add('hidden');
       document.removeEventListener('keydown', dismissIntro);
-      tryStartGame();
+      // The very first launch races against the map (or fallback canvas) finishing its
+      // own setup, so it goes through tryStartGame's readiness check. Once a round has
+      // actually been played, everything is already set up, so Change Mode can just
+      // restart immediately.
+      if (hasStartedOnce) resetGame();
+      else tryStartGame();
+    }
+
+    function showModeSelect() {
+      clearRoundTimer();
+      clearTrashTimers();
+      clearLevelAdvanceTimer();
+      clearBagPenalties();
+      clearWiggleAnimations();
+      winPanel.classList.remove('visible');
+      introDismissed = false;
+      introPanel.classList.remove('hidden');
+      document.addEventListener('keydown', dismissIntro);
+      setIntroMode(difficulty);
     }
 
     function dismissIntro() {
@@ -1414,6 +1461,7 @@
     window.addEventListener('resize', resizeFallbackMap);
     fallbackCanvas.addEventListener('click', handleFallbackClick);
     restartBtn.addEventListener('click', resetGame);
+    changeModeBtn.addEventListener('click', showModeSelect);
     introPanel.addEventListener('click', dismissIntro);
     document.addEventListener('keydown', dismissIntro);
     modeNormalBtn.addEventListener('click', (event) => {
